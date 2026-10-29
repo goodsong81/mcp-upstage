@@ -37,10 +37,12 @@ async def parse_document(
         "it costs more per page and is slower. "
         "'auto': let the API decide per page whether enhanced processing is needed."
     ))] = "standard",
-    ocr: Annotated[Literal["auto", "force"], Field(description=(
-        "OCR mode. 'force' (default): always run OCR. "
-        "'auto': use the embedded text of digital documents and run OCR only when needed."
-    ))] = "force",
+    ocr: Annotated[Optional[Literal["auto", "force"]], Field(description=(
+        "OCR mode. 'force': always run OCR. "
+        "'auto': use the embedded text of digital documents and run OCR only when needed. "
+        "If omitted, 'auto' is used for spreadsheets (.xlsx, .xls, .xlsm, .csv, .tsv) "
+        "so their cell text is kept, and 'force' for all other files."
+    ))] = None,
     model: Annotated[str, Field(description=(
         "Document Parse model name. Use the default 'document-parse' for the latest version, "
         "or a dated version such as 'document-parse-260930' to pin it."

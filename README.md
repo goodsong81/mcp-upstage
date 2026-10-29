@@ -174,7 +174,7 @@ The server exposes two primary tools for AI models:
      `file_path` – the path to the document to be processed;  
      `output_formats` (optional) – output formats such as `html`, `text`, `markdown`;  
      `mode` (default `standard`) – `standard`, `enhanced` or `auto`. Use `enhanced` for complex tables, charts, handwriting or low-quality scans; `auto` lets the API decide per page;  
-     `ocr` (default `force`) – `force` always runs OCR, `auto` uses embedded text of digital documents when possible;  
+     `ocr` (default `force`, or `auto` for spreadsheets) – `force` always runs OCR, `auto` uses embedded text of digital documents when possible. If omitted, spreadsheets (`.xlsx`, `.xls`, `.xlsm`, `.csv`, `.tsv`) are sent with `auto` so their cell text is used instead of OCR on a rendered image; all other files use `force`;  
      `model` (default `document-parse`) – the latest model, or a dated version such as `document-parse-260930` to pin it.
    - **Applied mode:** The response ends with the model and per-mode page usage reported by the API, e.g. `Processed by document-parse-260930 | usage: {"pages": 1, "enhanced": [1]}`. If the requested `standard`/`enhanced` mode was not applied, a `WARNING` line follows.
    - **Cost note:** `enhanced` (and pages that `auto` routes to enhanced) is billed at a higher per-page price than `standard` and is slower. Keep the default `standard` unless the document needs it.

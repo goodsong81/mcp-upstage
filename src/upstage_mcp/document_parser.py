@@ -22,6 +22,11 @@ ParseMode = Literal["standard", "enhanced", "auto"]
 OcrMode = Literal["auto", "force"]
 DEFAULT_MODE = "standard"
 DEFAULT_OCR = "force"
+# Spreadsheets carry their own cell text. With ocr="force" the API renders the
+# sheet to an image and OCRs it, which often breaks tables, so when the caller
+# does not choose an OCR mode, spreadsheets are sent with ocr="auto".
+SPREADSHEET_EXTENSIONS = frozenset({".xlsx", ".xls", ".xlsm", ".csv", ".tsv"})
+SPREADSHEET_OCR = "auto"
 DEFAULT_MODEL = "document-parse"
 # Per-page processing modes reported as keys of the response `usage` field
 USAGE_MODE_KEYS = ("standard", "enhanced")
@@ -31,13 +36,34 @@ DOCUMENT_PARSING_DIR = Path.home() / ".mcp-upstage" / "outputs" / "document_pars
 os.makedirs(DOCUMENT_PARSING_DIR, exist_ok=True)
 
 
+def _resolve_ocr(file_path: str, ocr: Optional[OcrMode]) -> OcrMode:
+    """
+    Resolve the OCR mode to send to the API.
+    
+    An explicit value is always sent as is. When it is omitted (None),
+    spreadsheets use "auto" and every other file uses "force".
+    
+    Args:
+        file_path: Path to the document file
+        ocr: OCR mode chosen by the caller, or None if not specified
+        
+    Returns:
+        The OCR mode to send
+    """
+    if ocr is not None:
+        return ocr
+    if Path(file_path).suffix.lower() in SPREADSHEET_EXTENSIONS:
+        return SPREADSHEET_OCR
+    return DEFAULT_OCR
+
+
 async def _parse_document_api(
     file_path: str,
     api_key: str,
     ctx: Optional[Context] = None,
     output_formats: Optional[List[str]] = None,
     mode: ParseMode = DEFAULT_MODE,
-    ocr: OcrMode = DEFAULT_OCR,
+    ocr: Optional[OcrMode] = None,
     model: str = DEFAULT_MODEL
 ) -> Dict[str, Any]:
     """
@@ -49,13 +75,15 @@ async def _parse_document_api(
         ctx: Optional MCP context for progress reporting
         output_formats: List of output formats (default: None)
         mode: Parsing mode ("standard", "enhanced" or "auto")
-        ocr: OCR mode ("auto" or "force")
+        ocr: OCR mode ("auto" or "force"). If None, "auto" for spreadsheets
+            (.xlsx, .xls, .xlsm, .csv, .tsv) and "force" for everything else
         model: Model name or pinned version (e.g. "document-parse-260930")
         
     Returns:
         API response as a dict
     """
     validate_file_exists(file_path)
+    ocr = _resolve_ocr(file_path, ocr)
     
     # Initialize progress reporting if context provided
     if ctx:
@@ -183,7 +211,7 @@ async def parse_and_save_document(
     ctx: Optional[Context] = None,
     output_formats: Optional[List[str]] = None,
     mode: ParseMode = DEFAULT_MODE,
-    ocr: OcrMode = DEFAULT_OCR,
+    ocr: Optional[OcrMode] = None,
     model: str = DEFAULT_MODEL
 ) -> str:
     """
@@ -197,7 +225,8 @@ async def parse_and_save_document(
         ctx: Optional MCP context for progress reporting
         output_formats: List of output formats (default: None)
         mode: Parsing mode ("standard", "enhanced" or "auto")
-        ocr: OCR mode ("auto" or "force")
+        ocr: OCR mode ("auto" or "force"). If None, "auto" for spreadsheets
+            (.xlsx, .xls, .xlsm, .csv, .tsv) and "force" for everything else
         model: Model name or pinned version (e.g. "document-parse-260930")
         
     Returns:

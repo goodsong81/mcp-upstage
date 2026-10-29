@@ -381,6 +381,56 @@ class TestInfoExtractorContextLogging:
         assert mock_ctx.info.await_count == mock_ctx.info.call_count
 
 
+class TestOcrDefaultBySpreadsheet:
+    """Omitted ocr is auto for spreadsheets and force otherwise; an explicit value is kept."""
+
+    @staticmethod
+    async def _sent_ocr(file_path: Path, api_key: str, **kwargs) -> str:
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = _response(200, _api_body({"pages": 1, "standard": [1]}))
+            await document_parser.parse_and_save_document(
+                file_path=str(file_path), api_key=api_key, **kwargs
+            )
+        return mock_post.call_args.kwargs["data"]["ocr"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", ["sheet.xlsx", "sheet.xls", "sheet.xlsm", "table.csv", "table.tsv", "SHEET.XLSX", "Table.Csv"])
+    async def test_should_send_auto_for_spreadsheet_when_ocr_omitted(self, mock_api_key: str, tmp_path: Path, name: str):
+        sheet = tmp_path / name
+        sheet.write_bytes(b"a,b\n1,2\n")
+
+        assert await self._sent_ocr(sheet, mock_api_key) == "auto"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", ["sheet.xlsx", "table.csv"])
+    async def test_should_keep_explicit_force_for_spreadsheet(self, mock_api_key: str, tmp_path: Path, name: str):
+        sheet = tmp_path / name
+        sheet.write_bytes(b"a,b\n1,2\n")
+
+        assert await self._sent_ocr(sheet, mock_api_key, ocr="force") == "force"
+
+    @pytest.mark.asyncio
+    async def test_should_send_force_for_pdf_when_ocr_omitted(self, mock_api_key: str, temp_pdf_file: Path):
+        assert await self._sent_ocr(temp_pdf_file, mock_api_key) == "force"
+
+    @pytest.mark.asyncio
+    async def test_should_keep_explicit_auto_for_pdf(self, mock_api_key: str, temp_pdf_file: Path):
+        assert await self._sent_ocr(temp_pdf_file, mock_api_key, ocr="auto") == "auto"
+
+    @pytest.mark.asyncio
+    async def test_should_resolve_spreadsheet_default_through_tool_function(self, mock_api_key: str, tmp_path: Path):
+        from upstage_mcp import server
+
+        sheet = tmp_path / "sheet.xlsx"
+        sheet.write_bytes(b"PK")
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = _response(200, _api_body({"pages": 1, "standard": [1]}))
+            # Call the tool function itself so its own parameter defaults are used
+            await server.parse_document(file_path=str(sheet))
+
+        assert mock_post.call_args.kwargs["data"]["ocr"] == "auto"
+
+
 class TestServerTool:
     """The MCP tool must expose the options and pass them through to the parser."""
 
@@ -393,8 +443,10 @@ class TestServerTool:
 
         assert properties["mode"]["enum"] == ["standard", "enhanced", "auto"]
         assert properties["mode"]["default"] == "standard"
-        assert properties["ocr"]["enum"] == ["auto", "force"]
-        assert properties["ocr"]["default"] == "force"
+        ocr_enum = [value for option in properties["ocr"]["anyOf"] for value in option.get("enum", [])]
+        assert ocr_enum == ["auto", "force"]
+        # Omitted ocr is resolved per file (auto for spreadsheets, force otherwise)
+        assert properties["ocr"]["default"] is None
         assert properties["model"]["default"] == "document-parse"
         assert "enhanced" in properties["mode"]["description"]
 
